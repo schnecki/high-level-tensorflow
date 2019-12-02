@@ -151,6 +151,7 @@ main = do
     forM_ ([0 .. 1000] :: [Int]) $ \i -> do
       let images = encodeImageBatch (selectBatch i trainingImages)
           labels = encodeLabelBatch (selectBatch i trainingLabels)
+      liftIO $ putStrLn "Creating model"
       train model images labels
       when (i `mod` 100 == 0) $ do
         err <- errorRate model images labels

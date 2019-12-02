@@ -1,5 +1,5 @@
 name:                high-level-tensorflow
-version:             0.1.0.0
+version:             0.2.0.1
 github:              "schnecki/high-level-tensorflow"
 license:             BSD3
 author:              "Manuel Schneckenreither"
@@ -21,20 +21,39 @@ description:         Please see the README on GitHub at <https://github.com/schn
 
 dependencies:
 - base >= 4.7 && < 5
-- tensorflow >= 0.2.0.1
+- tensorflow == 0.2.0.1
 - tensorflow-core-ops
 # - tensorflow-logging
-# - tensorflow-mnist-input-data
+- tensorflow-mnist-input-data
 - tensorflow-mnist
-# - tensorflow-opgen
+- tensorflow-opgen
 - tensorflow-ops
 - tensorflow-proto
 # - tensorflow-records-conduit
 # - tensorflow-records
 
+- deepseq
+- bytestring
+- containers
+- cereal
+- cereal-text
+- text
+- vector
+- directory
+- temporary
+- lens
+- transformers
+- data-default
 
 library:
   source-dirs: src
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
+    -fwarn-tabs
 
 executables:
   high-level-tensorflow-exe:
@@ -46,6 +65,8 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - high-level-tensorflow
+    - random
+    - HUnit
 
 tests:
   high-level-tensorflow-test:

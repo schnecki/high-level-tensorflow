@@ -42,10 +42,20 @@ packages:
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
 extra-deps:
-- snappy-framing-0.1.2
-- snappy-0.2.0.2
 - git: https://github.com/tensorflow/haskell
   commit: 8cde4d6a277f188ca495d29096a62b36e8534a3f
+  subdirs:
+  - tensorflow
+  - tensorflow-core-ops
+  # - tensorflow-logging
+  - tensorflow-mnist
+  - tensorflow-mnist-input-data
+  - tensorflow-opgen
+  - tensorflow-ops
+  - tensorflow-proto
+  # - tensorflow-records
+  # - tensorflow-records-conduit
+  # - tensorflow-test
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
