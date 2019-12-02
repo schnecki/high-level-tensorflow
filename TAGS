@@ -1,0 +1,22 @@
+
+app/Main.hs,342
+module Main Main7,8
+numPixels numPixels30,31
+numLabels numLabels32,33
+fit fit37,38
+randomParam randomParam57,58
+type LabelType LabelType63,64
+data Model Model65,66
+      train train66,67
+    , infer infer69,70
+    , errorRate errorRate71,72
+createModel createModel76,77
+main main120,121
+reduceMean reduceMean172,173
+
+test/Spec.hs,15
+main main0,1
+
+src/Lib.hs,42
+module LibLib0,1
+someFunc someFunc4,5
