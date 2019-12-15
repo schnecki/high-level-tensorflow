@@ -95,5 +95,5 @@ adamRefs' config params shapes grads =
     updateBeta1 <- updateBeta beta1Power beta1
     updateBeta2 <- updateBeta beta2Power beta2
     grp <- TF.group (updateBeta1 : updateBeta2 : updateVars)
-    let vars = [beta1Power, beta2Power, updateBeta1, updateBeta2] ++ updateVars
+    let vars = ms ++ vs ++ [beta1Power, beta2Power]
     return (grp, vars, [lrRef])
