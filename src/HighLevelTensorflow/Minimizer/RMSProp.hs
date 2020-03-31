@@ -27,10 +27,10 @@ import           HighLevelTensorflow.Minimizer.Type
 
 -- | RMS Prop Configuration.
 data RmsPropConfig = RmsPropConfig
-    { rmsPropLearningRate :: Float -- ^ Learning rate [Default: 0.001]
-    , rmsPropRho          :: Float -- ^ Decay rate [Default: 0.9]
-    , rmsPropMomentum     :: Float -- ^ Momentum [Default 0.0]
-    , rmsPropEpsilon      :: Float -- ^ Ridge Term [Default: 1e-7]
+    { rmsPropLearningRate :: !Float -- ^ Learning rate [Default: 0.001]
+    , rmsPropRho          :: !Float -- ^ Decay rate [Default: 0.9]
+    , rmsPropMomentum     :: !Float -- ^ Momentum [Default 0.0]
+    , rmsPropEpsilon      :: !Float -- ^ Ridge Term [Default: 1e-7]
     }
 
 instance Default RmsPropConfig where

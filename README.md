@@ -21,3 +21,48 @@ You need to add following to `stack.yaml`, as Tensorflow is not on stackage.
 
 
 Tested with lts-14.25.
+
+# Support
+
+ - FeedForward ANNs
+ - Minimizers:
+   - Adam
+   - RMSProp
+   - SGD
+
+Help in adding support for other algorithms and ANN types is very much appreciated.
+
+
+# Example
+
+
+    import qualified HighLevelTensorflow      as TF
+    import           GHC.Int                  (Int64)
+    import qualified Data.Vector.Storable                   as V
+
+    modelBuilder :: ModelBuilderFunction    -- This is: (MonadBuild m) => Int64 -> m TensorflowModel
+    modelBuilder colOut =
+          buildModel $
+          inputLayer1D inpLen >>
+          fullyConnected [20] relu' >>
+          fullyConnected [10] relu' >>
+          fullyConnected [10] relu' >>
+          fullyConnected [1, colOut] tanh' >>
+          trainingByAdamWith AdamConfig {adamLearningRate = 0.001, adamBeta1 = 0.9, adamBeta2 = 0.999, adamEpsilon = 1e-8}
+          -- trainingByGradientDescent 0.01
+          -- trainingByRmsProp
+          where inpLen = 10
+
+then for instance use it with
+
+    test :: IO ()
+    test = do
+      res <- TF.runSession $ do
+        model <- modelBuilder 1
+        let model' = TensorflowModel' model Nothing Nothing (modelBuilder 1)
+        forwardRun model' [V.fromList [0.1,0.2 .. 1.0]]
+      Prelude.print res
+
+
+See the submodules of `HighLevelTensorflow.TensorflowModel` for more operations, like `backwardRun`,
+`saveModel` and `restoreModel`.

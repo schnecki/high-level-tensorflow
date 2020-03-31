@@ -18,10 +18,10 @@ import           HighLevelTensorflow.Util
 -- | This data structure saves the type and references to the model variables of the optimizer.
 data OptimizerVariables
   = GradientDescentRefs
-      { gradientDescentLearningRateRef :: TF.Tensor TF.Ref Float
+      { gradientDescentLearningRateRef :: !(TF.Tensor TF.Ref Float)
       }
   | AdamRefs
-      { adamLearningRateRef :: TF.Tensor TF.Ref Float
+      { adamLearningRateRef :: !(TF.Tensor TF.Ref Float)
       }
   | RmsPropRefs
       { rmsPropLearningRateRef :: !(TF.Tensor TF.Ref Float)

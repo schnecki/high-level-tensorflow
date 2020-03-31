@@ -217,3 +217,5 @@ instance Serialize TensorflowModel' where
         BS.writeFile pathTrain bytesTrain
         let fakeBuilder = TF.runSession $ return $ TensorflowModel inp out label train nnVars trVars optRefs
         return $ TensorflowModel' (TensorflowModel inp out label train nnVars trVars optRefs) (Just basePath) lastIO fakeBuilder
+
+

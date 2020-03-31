@@ -21,13 +21,13 @@ import           HighLevelTensorflow.OptimizerVariables
 
 -- | A Tensorflow Model holds all needed information to work with a model in RAM.
 data TensorflowModel = TensorflowModel
-  { inputLayerName         :: Text                     -- ^ Input layer name for feeding input.
-  , outputLayerName        :: Text                     -- ^ Output layer name for predictions.
-  , labelLayerName         :: Text                     -- ^ Labels input layer name for training.
-  , trainingNode           :: TF.ControlNode           -- ^ Training node.
-  , neuralNetworkVariables :: [TF.Tensor TF.Ref Float] -- ^ Neural network variables for saving and restoring.
-  , trainingVariables      :: [TF.Tensor TF.Ref Float] -- ^ Training data/settings for saving and restoring.
-  , optimizerVariables     :: [OptimizerVariables]
+  { inputLayerName         :: !Text                     -- ^ Input layer name for feeding input.
+  , outputLayerName        :: !Text                     -- ^ Output layer name for predictions.
+  , labelLayerName         :: !Text                     -- ^ Labels input layer name for training.
+  , trainingNode           :: !TF.ControlNode           -- ^ Training node.
+  , neuralNetworkVariables :: ![TF.Tensor TF.Ref Float] -- ^ Neural network variables for saving and restoring.
+  , trainingVariables      :: ![TF.Tensor TF.Ref Float] -- ^ Training data/settings for saving and restoring.
+  , optimizerVariables     :: ![OptimizerVariables]
   }
 
 instance NFData TensorflowModel where
@@ -37,10 +37,10 @@ instance NFData TensorflowModel where
 -- | A @TensorflowModel'@ holds the information how to load and store and underlying @TensorflowModel@, as well as how
 -- to build the model (required for loading and starting a new Tensorflow session).
 data TensorflowModel' = TensorflowModel'
-  { tensorflowModel        :: TensorflowModel
-  , checkpointBaseFileName :: Maybe FilePath
+  { tensorflowModel        :: !TensorflowModel
+  , checkpointBaseFileName :: !(Maybe FilePath)
   , lastInputOutputTuple   :: !(Maybe (V.Vector Float, V.Vector Float))
-  , tensorflowModelBuilder :: TF.Session TensorflowModel
+  , tensorflowModelBuilder :: !(TF.Session TensorflowModel)
   }
 
 
