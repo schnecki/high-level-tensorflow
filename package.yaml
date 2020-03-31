@@ -1,5 +1,5 @@
 name:                high-level-tensorflow
-version:             0.2.0.1
+version:             1.14.0
 github:              "schnecki/high-level-tensorflow"
 license:             BSD3
 author:              "Manuel Schneckenreither"
@@ -21,7 +21,7 @@ description:         Please see the README on GitHub at <https://github.com/schn
 
 dependencies:
 - base >= 4.7 && < 5
-- tensorflow == 0.2.0.1
+- tensorflow >= 0.2.0.1
 - tensorflow-core-ops
 # - tensorflow-logging
 - tensorflow-mnist-input-data
@@ -44,6 +44,7 @@ dependencies:
 - lens
 - transformers
 - data-default
+- mtl
 
 library:
   source-dirs: src

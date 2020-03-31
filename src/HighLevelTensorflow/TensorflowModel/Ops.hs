@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedLists #-}
+{-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module HighLevelTensorflow.TensorflowModel.Ops
     ( setLearningRates
     , getLearningRates
@@ -10,35 +11,28 @@ module HighLevelTensorflow.TensorflowModel.Ops
     , restoreModel
     , restoreModelWithLastIO
     , buildTensorflowModel
-    ,
     ) where
 
+import           Control.Arrow                            ((***))
 import           Control.DeepSeq
 import           Control.Monad                            (unless, void, zipWithM)
 import           Control.Monad.IO.Class                   (MonadIO, liftIO)
 import qualified Data.ByteString                          as BS
 import qualified Data.ByteString.Char8                    as B8
-import           Data.List                                (foldl', genericLength)
-import qualified Data.Map.Strict                          as M
+import           Data.List                                (genericLength)
 import           Data.Maybe                               (fromMaybe, isJust)
 import           Data.Serialize
 import           Data.Serialize.Text                      ()
-import           Data.Text                                (Text)
-import qualified Data.Vector                              as V
+import qualified Data.Vector                              as VU
+import qualified Data.Vector.Storable                     as V
 import           System.Directory
 import           System.IO.Temp
 import           System.IO.Unsafe
 
 import qualified TensorFlow.Core                          as TF
-import qualified TensorFlow.Nodes                         as TF (nodesUnion)
 import qualified TensorFlow.Ops                           as TF hiding
                                                                  (initializedVariable,
                                                                  zeroInitializedVariable)
-import qualified TensorFlow.Output                        as TF (ControlNode (..),
-                                                                 NodeName (..))
-import qualified TensorFlow.Tensor                        as TF (Tensor (..),
-                                                                 tensorNodeName,
-                                                                 tensorRefFromName)
 
 import           TensorFlow.Session
 
@@ -46,10 +40,9 @@ import           HighLevelTensorflow.OptimizerVariables
 import           HighLevelTensorflow.TensorflowModel.Type
 import           HighLevelTensorflow.Util
 
-
-type Outputs = [[Float]]        -- ^ 1st level: rows, 2nd level: input nodes
-type Inputs = [[Float]]         -- ^ 1st level: rows, 2nd level: input nodes
-type Labels = [[Float]]         -- ^ 1st level: rows, 2nd level: input nodes
+type Outputs = [V.Vector Float]        -- ^ 1st level: number of input rows, 2nd level: number of actions
+type Inputs = [V.Vector Float]
+type Labels = [V.Vector Float]
 
 -- | Todo: make this value a variable setting
 trainMaxVal :: Float
@@ -68,25 +61,25 @@ trainName = "train"
 setLearningRates :: (MonadIO m) => [Float] -> TensorflowModel' -> SessionT m ()
 setLearningRates learningRates model = zipWithM TF.assign lrRefs (map TF.scalar learningRates) >>= TF.run_
   where
-    lrRefs = concatMap getLearningRateRefs (optimizerVariables $ tensorflowModel model)
+    lrRefs = concatMap getLearningRateRef (optimizerVariables $ tensorflowModel model)
 
 -- | Get all learning rates of all optimizers.
 getLearningRates :: (MonadIO m) => TensorflowModel' -> SessionT m [Float]
 getLearningRates model = do
   lrValues <- TF.run lrRefs
-  return $ map V.head (lrValues :: [V.Vector Float])
+  return $ map VU.head (lrValues :: [VU.Vector Float])
   where
-    lrRefs = concatMap getLearningRateRefs (optimizerVariables $ tensorflowModel model)
+    lrRefs = concatMap getLearningRateRef (optimizerVariables $ tensorflowModel model)
 
 -- | This helper function encodes the input batch.
 encodeInputBatch :: Inputs -> TF.TensorData Float
-encodeInputBatch xs = TF.encodeTensorData [genericLength xs, genericLength (head' xs)] (V.fromList $ mconcat xs)
-  where head' []    = error "head: empty input data in encodeInputBatch"
-        head' (x:_) = x
+encodeInputBatch xs = TF.encodeTensorData [genericLength xs, fromIntegral $ V.length (head' xs)] (mconcat xs)
+  where
+    head' []    = error "head: empty input data in encodeInputBatch"
+    head' (v:_) = v
 
--- | This helper function encodes the labels.
 encodeLabelBatch :: Labels -> TF.TensorData Float
-encodeLabelBatch xs = TF.encodeTensorData [genericLength xs, genericLength (head' xs)] (V.fromList $ mconcat xs)
+encodeLabelBatch xs = TF.encodeTensorData [genericLength xs, fromIntegral $ V.length (head' xs)] (mconcat xs)
   where head' []    = error "head: empty input data in encodeLabelBatch"
         head' (x:_) = x
 
@@ -97,27 +90,24 @@ forwardRun model inp =
       outRef = getRef (outputLayerName $ tensorflowModel model)
       inpT = encodeInputBatch inp
       nrOuts = length inp
-   in do res <- V.toList <$> TF.runWithFeeds [TF.feed inRef inpT] outRef
-         return $
-           -- trace ("res: " ++ show res)
-           -- trace ("output: " ++ show (separate (length res `div` nrOuts) res []))
-           separateInputRows (length res `div` nrOuts) res []
+   in do (res :: V.Vector Float) <- TF.runWithFeeds [TF.feed inRef inpT] outRef
+         return $ separateInputRows 0 (V.length res `div` nrOuts) res []
   where
-    separateInputRows _ [] acc = reverse acc
-    separateInputRows len xs acc
-      | length xs < len = error $ "error in separate (in Tensorflow.forwardRun), not enough values: " ++ show xs ++ " - len: " ++ show len
-      | otherwise = separateInputRows len (drop len xs) (take len xs : acc)
+    separateInputRows i len vec acc
+      | V.length vec == i = reverse acc
+      | V.length vec < i = error $ "error in separate (in Tensorflow.forwardRun), number of values did not match: " ++ show vec ++ " - len: " ++ show len
+      | otherwise = separateInputRows (i + len) len vec (V.slice i len vec : acc)
 
 -- | Train tensorflow model with checks.
 backwardRun :: (MonadIO m) => TensorflowModel' -> Inputs -> Labels -> SessionT m ()
 backwardRun model inp lab
-  | null inp || any null inp || null lab = error $ "Empty parameters in backwardRun not allowed! inp: " ++ show inp ++ ", lab: " ++ show lab
+  | null inp || any V.null inp || null lab = error $ "Empty parameters in backwardRun not allowed! inp: " ++ show inp ++ ", lab: " ++ show lab
   | otherwise =
     let inRef = getRef (inputLayerName $ tensorflowModel model)
         labRef = getRef (labelLayerName $ tensorflowModel model)
         inpT = encodeInputBatch inp
-        labT = encodeLabelBatch $ map (map (max (-trainMaxVal) . min trainMaxVal)) lab
-    in TF.runWithFeeds_ [TF.feed inRef inpT, TF.feed labRef labT] (trainingNode $ tensorflowModel model)
+        labT = encodeLabelBatch $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
+     in TF.runWithFeeds_ [TF.feed inRef inpT, TF.feed labRef labT] (trainingNode $ tensorflowModel model)
 
 -- | Copies values from one model to the other.
 copyValuesFromTo :: (MonadIO m) => TensorflowModel' -> TensorflowModel' -> SessionT m ()
@@ -185,19 +175,22 @@ restoreModel tfModel inp lab = do
 
 
 instance Serialize TensorflowModel' where
-  put tf@(TensorflowModel' (TensorflowModel inp out label train nnVars trVars optRefs) _ lastIO builder) = do
-    put inp >> put out >> put label >> put (getTensorControlNodeName train) >> put lastIO
+  put tf@(TensorflowModel' (TensorflowModel inp out label train nnVars trVars optRefs) _ mLastIO builder) = do
+    put inp >> put out >> put label >> put (getTensorControlNodeName train) >> put (fmap (V.toList *** V.toList) mLastIO)
     put $ map getTensorRefNodeName nnVars
     put $ map getTensorRefNodeName trVars
     put optRefs
     let (mBasePath, bytesModel, bytesTrain) =
-          unsafePerformIO $ do
-            void $ runSession $ saveModelWithLastIO tf
-            let basePath = fromMaybe (error "cannot read tensorflow model") (checkpointBaseFileName tf)
+          unsafePerformIO $
+            -- void $ saveModelWithLastIO tf -- must have been done before
+           do
+            let basePath = fromMaybe (error "cannot read tensorflow model") (checkpointBaseFileName tf) -- models have been saved during conversion
                 pathModel = basePath ++ "/" ++ modelName
                 pathTrain = basePath ++ "/" ++ trainName
             bModel <- liftIO $ BS.readFile pathModel
             bTrain <- liftIO $ BS.readFile pathTrain
+            removeFile pathModel -- remove file to not litter the filesystem
+            removeFile pathTrain
             return (checkpointBaseFileName tf, bModel, bTrain)
     put mBasePath
     put bytesModel
@@ -207,14 +200,15 @@ instance Serialize TensorflowModel' where
     out <- get
     label <- get
     train <- getControlNodeTensorFromName <$> get
-    lastIO <- get
+    lastIO <- fmap (V.fromList *** V.fromList) <$> get
     nnVars <- map getRefTensorFromName <$> get
     trVars <- map getRefTensorFromName <$> get
     optRefs <- get
     mBasePath <- get
     bytesModel <- get
     bytesTrain <- get
-    return $ force $
+    return $
+      force $
       unsafePerformIO $ do
         basePath <- maybe (getCanonicalTemporaryDirectory >>= flip createTempDirectory "") (\b -> createDirectoryIfMissing True b >> return b) mBasePath
         let pathModel = basePath ++ "/" ++ modelName
@@ -223,4 +217,3 @@ instance Serialize TensorflowModel' where
         BS.writeFile pathTrain bytesTrain
         let fakeBuilder = TF.runSession $ return $ TensorflowModel inp out label train nnVars trVars optRefs
         return $ TensorflowModel' (TensorflowModel inp out label train nnVars trVars optRefs) (Just basePath) lastIO fakeBuilder
-

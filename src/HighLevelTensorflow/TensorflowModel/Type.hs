@@ -6,8 +6,11 @@ module HighLevelTensorflow.TensorflowModel.Type
     ) where
 
 import           Control.DeepSeq
+import qualified Data.ByteString                        as BS
+import           Data.Serialize
 import           Data.Serialize.Text                    ()
 import           Data.Text                              (Text)
+import qualified Data.Vector.Storable                   as V
 
 import qualified TensorFlow.Core                        as TF
 import qualified TensorFlow.Output                      as TF (ControlNode (..))
@@ -36,7 +39,7 @@ instance NFData TensorflowModel where
 data TensorflowModel' = TensorflowModel'
   { tensorflowModel        :: TensorflowModel
   , checkpointBaseFileName :: Maybe FilePath
-  , lastInputOutputTuple   :: Maybe ([Float], [Float])
+  , lastInputOutputTuple   :: !(Maybe (V.Vector Float, V.Vector Float))
   , tensorflowModelBuilder :: TF.Session TensorflowModel
   }
 
