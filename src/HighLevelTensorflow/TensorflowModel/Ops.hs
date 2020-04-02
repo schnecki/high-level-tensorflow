@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedLists     #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module HighLevelTensorflow.TensorflowModel.Ops
     ( setLearningRates
     , getLearningRates
     , forwardRun
     , backwardRun
+    , computeGradients
     , copyValuesFromTo
     , saveModel
     , saveModelWithLastIO
@@ -30,6 +32,9 @@ import           System.IO.Temp
 import           System.IO.Unsafe
 
 import qualified TensorFlow.Core                          as TF
+import qualified TensorFlow.GenOps.Core                   as TF (print, square, sub)
+import qualified TensorFlow.Gradient                      as TF
+
 import qualified TensorFlow.Ops                           as TF hiding
                                                                  (initializedVariable,
                                                                  zeroInitializedVariable)
@@ -92,11 +97,12 @@ forwardRun model inp =
       nrOuts = length inp
    in do (res :: V.Vector Float) <- TF.runWithFeeds [TF.feed inRef inpT] outRef
          return $ separateInputRows 0 (V.length res `div` nrOuts) res []
-  where
-    separateInputRows i len vec acc
-      | V.length vec == i = reverse acc
-      | V.length vec < i = error $ "error in separate (in Tensorflow.forwardRun), number of values did not match: " ++ show vec ++ " - len: " ++ show len
-      | otherwise = separateInputRows (i + len) len vec (V.slice i len vec : acc)
+
+separateInputRows :: (Show a, V.Storable a) => Int -> Int -> V.Vector a -> [V.Vector a] -> [V.Vector a]
+separateInputRows i len vec acc
+  | V.length vec == i = reverse acc
+  | V.length vec < i = error $ "error in separate (in Tensorflow.forwardRun), number of values did not match: " ++ show vec ++ " - len: " ++ show len
+  | otherwise = separateInputRows (i + len) len vec (V.slice i len vec : acc)
 
 -- | Train tensorflow model with checks.
 backwardRun :: (MonadIO m) => TensorflowModel' -> Inputs -> Labels -> SessionT m ()
@@ -108,6 +114,23 @@ backwardRun model inp lab
         inpT = encodeInputBatch inp
         labT = encodeLabelBatch $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
      in TF.runWithFeeds_ [TF.feed inRef inpT, TF.feed labRef labT] (trainingNode $ tensorflowModel model)
+
+computeGradients :: (MonadIO m) => TensorflowModel' -> Inputs -> Labels -> SessionT m [V.Vector Float]
+computeGradients model inp lab
+  | null inp || any V.null inp || null lab = error $ "Empty parameters in computeGradients not allowed! inp: " ++ show inp ++ ", lab: " ++ show lab
+  | otherwise =
+    let inRef = getRef (inputLayerName $ tensorflowModel model)
+        labRef = getRef (labelLayerName $ tensorflowModel model)
+        grads = getRefTensorFromName "gradients"
+        inpT = encodeInputBatch inp
+        labT = encodeLabelBatch $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
+        nrOuts = length inp
+     in do (res :: V.Vector Float) <- TF.runWithFeeds [TF.feed inRef inpT, TF.feed labRef labT] grads
+           liftIO $ print res
+           return $ separateInputRows 0 (V.length res `div` nrOuts) res []
+      -- res <- TF.runWithFeeds [TF.feed inRef inpT, TF.feed labRef labT] grads
+      -- liftIO $ print res
+
 
 -- | Copies values from one model to the other.
 copyValuesFromTo :: (MonadIO m) => TensorflowModel' -> TensorflowModel' -> SessionT m ()

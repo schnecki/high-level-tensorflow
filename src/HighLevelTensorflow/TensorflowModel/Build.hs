@@ -17,6 +17,8 @@ module HighLevelTensorflow.TensorflowModel.Build
     , inputLayer1D
     , inputLayer
     , fullyConnected
+    , fullyConnectedLinear
+    , fullyConnectedWith
     , trainingByAdam
     , trainingByAdamWith
     , trainingByRmsProp
@@ -42,24 +44,20 @@ import qualified TensorFlow.Build                         as TF (addNewOp, evalB
                                                                  runBuildT, summaries)
 import qualified TensorFlow.Core                          as TF hiding (value)
 -- import qualified TensorFlow.GenOps.Core                         as TF (square)
-import qualified TensorFlow.GenOps.Core                   as TF (abs, add,
+import qualified TensorFlow.BuildOp                       as TF (OpParams)
+import qualified TensorFlow.GenOps.Core                   as TF (abs, add, add',
                                                                  approximateEqual,
                                                                  approximateEqual, assign,
                                                                  cast, getSessionHandle,
                                                                  getSessionTensor,
-                                                                 identity', lessEqual,
-                                                                 matMul, mul,
+                                                                 identity', identityN',
+                                                                 lessEqual, matMul, mul,
                                                                  readerSerializeState,
                                                                  relu, shape, square, sub,
                                                                  tanh, tanh',
                                                                  truncatedNormal)
+import qualified TensorFlow.Gradient                      as TF
 import qualified TensorFlow.Minimize                      as TF
--- import qualified TensorFlow.Ops                                 as TF (abs, add, assign,
---                                                                        cast, identity',
---                                                                        matMul, mul, relu,
---                                                                        sub,
---                                                                        truncatedNormal)
-import qualified TensorFlow.BuildOp                       as TF (OpParams)
 import qualified TensorFlow.Ops                           as TF (initializedVariable,
                                                                  initializedVariable',
                                                                  placeholder, placeholder',
@@ -73,7 +71,7 @@ import qualified TensorFlow.Tensor                        as TF (Ref (..),
                                                                  tensorNodeName,
                                                                  tensorRefFromName,
                                                                  tensorValueFromName,
-                                                                 toBuild)
+                                                                 toBuild, value)
 
 
 import           HighLevelTensorflow.Minimizer
@@ -136,9 +134,14 @@ inputLayer shape = do
   nrLayers .= layerIdxStartNr
   inputName .= Just inputTensorName
 
-
 fullyConnected :: (TF.MonadBuild m) => [Int64] -> (TF.OpParams -> TF.Tensor TF.Build Float -> TF.Tensor TF.Build Float) -> BuildM m ()
-fullyConnected shape activationFunction = do
+fullyConnected shape activationFunction = fullyConnectedWith shape (Just activationFunction)
+
+fullyConnectedLinear :: (TF.MonadBuild m) => [Int64] -> BuildM m ()
+fullyConnectedLinear shape = fullyConnectedWith shape Nothing
+
+fullyConnectedWith :: (TF.MonadBuild m) => [Int64] -> Maybe (TF.OpParams -> TF.Tensor TF.Build Float -> TF.Tensor TF.Build Float) -> BuildM m ()
+fullyConnectedWith shape mActivationFunction = do
   layers <- gets (^. nrLayers)
   inpLayer <- gets (^. inputName)
   when (layers < layerIdxStartNr || isNothing inpLayer) $ error "You must start your model with an input layer"
@@ -153,14 +156,19 @@ fullyConnected shape activationFunction = do
       setup <- lift ask
       hiddenWeights <- lift $ lift $ TF.initializedVariable' (TF.opName .~ fromString ("weights" ++ show layerNr)) =<< randomParam (setup ^. scaleWeights) previousNumUnits [previousNumUnits, numUnits]
       hiddenBiases <- lift $ lift $ TF.zeroInitializedVariable' (TF.opName .~ fromString ("bias" ++ show layerNr)) [numUnits]
-      let hiddenZ = (previousTensor `TF.matMul` hiddenWeights) `TF.add` hiddenBiases
       let outName = "out" <> pack (show layerNr)
-      hidden <- lift $ lift $ TF.render $ activationFunction (TF.opName .~ TF.explicitName outName) hiddenZ
+      hidden <-
+        case mActivationFunction of
+          Nothing -> lift $ lift $ TF.render $ TF.add' (TF.opName .~ TF.explicitName outName) (previousTensor `TF.matMul` hiddenWeights) hiddenBiases
+          Just activationFunction -> do
+            let hiddenZ = (previousTensor `TF.matMul` hiddenWeights) `TF.add` hiddenBiases
+            lift $ lift $ TF.render $ activationFunction (TF.opName .~ TF.explicitName outName) hiddenZ
       nnVars %= (++ [hiddenWeights, hiddenBiases])
       lastTensor .= Just (numUnits, hidden)
       outputName .= Just outName
       nrLayers += 1
-      nrUnitsLayer %=  (++ [[previousNumUnits, numUnits], [numUnits]])
+      nrUnitsLayer %= (++ [[previousNumUnits, numUnits], [numUnits]])
+
 
 trainingByAdam :: (TF.MonadBuild m) => BuildM m ()
 trainingByAdam = trainingByAdamWith TF.AdamConfig {TF.adamLearningRate = 0.01, TF.adamBeta1 = 0.9, TF.adamBeta2 = 0.999, TF.adamEpsilon = 1e-8}
@@ -208,6 +216,14 @@ trainingBy optRefFun optimizer = do
       labels <- lift $ lift $ TF.placeholder' (TF.opName .~ TF.explicitName labLayerName) [batchSize]
       let loss = TF.square (previousTensor `TF.sub` labels)
       (trainStep, trVars, minimizerRefs) <- lift $ lift $ minimizeWithRefs optimizer loss weights (map TF.Shape nrUnits)
+
+      let vals = map TF.value weights
+
+      grad <- lift $ lift $ TF.gradients loss vals >>= optimizer weights (map TF.Shape nrUnits) -- TF.identity' (TF.opName .~ "gradients") (TF.gradients loss vals)
+      grad' <- lift $ lift $ TF.gradients loss vals
+      lift $ lift $ TF.identityN' (TF.opName .~ "gradients")  grad'
+      -- >>= minimizer params shapes
+
       trainVars .= trVars
       maybeTrainingNode .= Just trainStep
       labelName .= Just labLayerName
