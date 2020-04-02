@@ -6,7 +6,7 @@ module HighLevelTensorflow.TensorflowModel.Ops
     , getLearningRates
     , forwardRun
     , backwardRun
-    , computeGradients
+    -- , computeGradients
     , copyValuesFromTo
     , saveModel
     , saveModelWithLastIO
@@ -50,8 +50,8 @@ type Inputs = [V.Vector Float]
 type Labels = [V.Vector Float]
 
 -- | Todo: make this value a variable setting
-trainMaxVal :: Float
-trainMaxVal = 0.95
+-- trainMaxVal :: Float
+-- trainMaxVal = 0.95
 
 -- | Model name of saved file
 modelName :: String
@@ -112,22 +112,22 @@ backwardRun model inp lab
     let inRef = getRef (inputLayerName $ tensorflowModel model)
         labRef = getRef (labelLayerName $ tensorflowModel model)
         inpT = encodeInputBatch inp
-        labT = encodeLabelBatch $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
+        labT = encodeLabelBatch lab --  $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
      in TF.runWithFeeds_ [TF.feed inRef inpT, TF.feed labRef labT] (trainingNode $ tensorflowModel model)
 
-computeGradients :: (MonadIO m) => TensorflowModel' -> Inputs -> Labels -> SessionT m [V.Vector Float]
-computeGradients model inp lab
-  | null inp || any V.null inp || null lab = error $ "Empty parameters in computeGradients not allowed! inp: " ++ show inp ++ ", lab: " ++ show lab
-  | otherwise =
-    let inRef = getRef (inputLayerName $ tensorflowModel model)
-        labRef = getRef (labelLayerName $ tensorflowModel model)
-        grads = getRefTensorFromName "gradients"
-        inpT = encodeInputBatch inp
-        labT = encodeLabelBatch $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
-        nrOuts = length inp
-     in do (res :: V.Vector Float) <- TF.runWithFeeds [TF.feed inRef inpT, TF.feed labRef labT] grads
-           liftIO $ print res
-           return $ separateInputRows 0 (V.length res `div` nrOuts) res []
+-- computeGradients :: (MonadIO m) => TensorflowModel' -> Inputs -> Labels -> SessionT m [V.Vector Float]
+-- computeGradients model inp lab
+--   | null inp || any V.null inp || null lab = error $ "Empty parameters in computeGradients not allowed! inp: " ++ show inp ++ ", lab: " ++ show lab
+--   | otherwise =
+--     let inRef = getRef (inputLayerName $ tensorflowModel model)
+--         labRef = getRef (labelLayerName $ tensorflowModel model)
+--         grads = getRefTensorFromName "gradients"
+--         inpT = encodeInputBatch inp
+--         labT = encodeLabelBatch lab -- $ map (V.map (max (-trainMaxVal) . min trainMaxVal)) lab
+--         nrOuts = length inp
+--      in do (res :: V.Vector Float) <- TF.runWithFeeds [TF.feed inRef inpT, TF.feed labRef labT] grads
+--            liftIO $ print res
+--            return $ separateInputRows 0 (V.length res `div` nrOuts) res []
       -- res <- TF.runWithFeeds [TF.feed inRef inpT, TF.feed labRef labT] grads
       -- liftIO $ print res
 
