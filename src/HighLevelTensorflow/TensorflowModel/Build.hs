@@ -217,11 +217,10 @@ trainingBy optRefFun optimizer = do
       let loss = TF.square (previousTensor `TF.sub` labels)
       (trainStep, trVars, minimizerRefs) <- lift $ lift $ minimizeWithRefs optimizer loss weights (map TF.Shape nrUnits)
 
-      let vals = map TF.value weights
-
-      grad <- lift $ lift $ TF.gradients loss vals >>= optimizer weights (map TF.Shape nrUnits) -- TF.identity' (TF.opName .~ "gradients") (TF.gradients loss vals)
-      grad' <- lift $ lift $ TF.gradients loss vals
-      lift $ lift $ TF.identityN' (TF.opName .~ "gradients")  grad'
+      -- let vals = map TF.value weights
+      -- grad <- lift $ lift $ TF.gradients loss vals >>= optimizer weights (map TF.Shape nrUnits) -- TF.identity' (TF.opName .~ "gradients") (TF.gradients loss vals)
+      -- grad' <- lift $ lift $ TF.gradients loss vals
+      -- lift $ lift $ TF.identityN' (TF.opName .~ "gradients")  grad'
       -- >>= minimizer params shapes
 
       trainVars .= trVars
